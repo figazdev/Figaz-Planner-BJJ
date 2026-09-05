@@ -161,6 +161,44 @@ const classDefaults=[
   {id:'mega',label:'Turma Mega Fitness',short:'Mega Fitness',time:''}
 ];
 const coachDefaults=['Victor Figueiredo','Larissa Viana'];
+const seededStudents=[
+  {id:'seed_icaro_sella',name:'ICARO DOS SANTOS SELLA',classId:'colmeia1630'},
+  {id:'seed_pedro_trindade',name:'PEDRO TRINDADE OLIVEIRA',classId:'colmeia1630'},
+  {id:'seed_miguel_chaves',name:'MIGUEL CHAVES MENDES DE ARAUJO',classId:'colmeia1630'},
+  {id:'seed_lucas_benito',name:'LUCAS BENITO FASANARO BASÍLIO',classId:'colmeia1630'},
+  {id:'seed_lucas_kong',name:'LUCAS GABRIEL EPIFANIO KONG',classId:'colmeia1630'},
+  {id:'seed_pedro_costa',name:'PEDRO COSTA CRUZ BARBOSA',classId:'colmeia1630'},
+  {id:'seed_miguel_sales',name:'MIGUEL SALES PECCINI',classId:'colmeia1630'},
+  {id:'seed_henrique_eda',name:'HENRIQUE EDA',classId:'colmeia1630'},
+  {id:'seed_joao_nobrega',name:'JOAO MARCELO NOBREGA MARQUES',classId:'colmeia1630'},
+  {id:'seed_ian_delmiro',name:'IAN SEBASTIAO DELMIRO',classId:'colmeia1730'},
+  {id:'seed_lucas_nakashima',name:'LUCAS DE OLIVEIRA NAKASHIMA',classId:'colmeia1730'}
+].map(s=>({...s,phone:'',birthDate:'',dueDay:10,monthlyFee:0,active:true,faceEnrolled:false,biometricConsentAt:''}));
+const seededAttendance={
+  colmeia1630:{
+    dates:['2026-08-07','2026-08-10','2026-08-12','2026-08-14','2026-08-17','2026-08-19','2026-08-21','2026-08-24','2026-08-26','2026-08-28','2026-08-31','2026-09-02'],
+    rows:{
+      seed_icaro_sella:['F','F','P','F','P','P','P','P','P','P','F','P'],
+      seed_pedro_trindade:['P','P','P','P','F','P','P','F','P','P','F','P'],
+      seed_miguel_chaves:['P','F','P','F','F','F','P','P','P','P','F','F'],
+      seed_lucas_benito:['F','F','F','F','F','F','F','F','F','F','F','F'],
+      seed_lucas_kong:['F','F','F','F','F','F','F','F','F','F','F','F'],
+      seed_pedro_costa:['P','F','P','P','F','P','P','F','F','P','F','P'],
+      seed_miguel_sales:['F','F','P','P','P','F','P','P','P','F','F','F'],
+      seed_henrique_eda:['F','F','F','F','F','F','F','F','F','F','F','F'],
+      seed_joao_nobrega:['F','F','F','F','F','F','F','F','F','F','F','F']
+    }
+  },
+  colmeia1730:{
+    dates:['2026-08-07','2026-08-10','2026-08-12','2026-08-14','2026-08-17','2026-08-19','2026-08-21','2026-08-24','2026-08-26','2026-08-28','2026-08-31','2026-09-02'],
+    rows:{
+      seed_ian_delmiro:['F','F','P','F','F','P','F','F','P','F','F','F'],
+      seed_lucas_nakashima:['P','P','P','P','P','P','P','P','P','P','P','P']
+    }
+  }
+};
+function buildSeedAttendance(idMap={}){const sessions=[];for(const[classId,data]of Object.entries(seededAttendance)){data.dates.forEach((date,i)=>{const entries={};for(const[seedId,marks]of Object.entries(data.rows))entries[idMap[seedId]||seedId]=marks[i];sessions.push({id:`seed_att_${classId}_${date.replace(/-/g,'')}`,date,classId,entries})})}return sessions}
+function normalizeStudentName(name=''){return name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/gi,'').toLowerCase()}
 const T=(name,category,type='Ataque',gi='Ambos',level='Iniciante',cues='Base, postura, controle e execução por etapas.')=>({id:'t_'+name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_'),name,category,type,gi,level,cues});
 function techGroup(t){
   if(t.type==='Finalização')return 'Finalização';
@@ -201,10 +239,11 @@ T('Chave de tornozelo reta','Finalização','Finalização','Ambos','Intermediá
 T('Shrimp / fuga de quadril','Escape / Defesa','Defesa'),T('Bridge / ponte','Escape / Defesa','Defesa'),T('Recuperação de guarda','Escape / Defesa','Defesa'),T('Defesa de armbar','Escape / Defesa','Defesa','Ambos','Intermediário'),T('Defesa de triângulo','Escape / Defesa','Defesa','Ambos','Intermediário'),T('Defesa de guilhotina','Escape / Defesa','Defesa'),T('Defesa de mata-leão','Escape / Defesa','Defesa'),
 T('Lateral para montada','Transição','Transição'),T('Montada para costas','Transição','Transição','Ambos','Intermediário'),T('Tartaruga para costas','Transição','Transição'),T('Joelho na barriga para montada','Transição','Transição'),T('Guarda fechada para costas','Transição','Transição','Ambos','Intermediário')
 ];
-function freshState(){return{version:3,settings:{coaches:[...coachDefaults],duration:60,repeatDays:21,classes:JSON.parse(JSON.stringify(classDefaults)),kioskPin:'',faceThreshold:.62},techniques:JSON.parse(JSON.stringify(defaultTechniques)),lessons:[],cycles:[],students:[],attendanceSessions:[],payments:[],checkins:[]}}
-function migrateState(old){if(!old||!old.settings||!old.techniques)return freshState();old.version=3;old.settings.kioskPin=old.settings.kioskPin||'';old.settings.faceThreshold=Number(old.settings.faceThreshold)||.62;old.students=(old.students||[]).map(s=>({...s,birthDate:s.birthDate||'',dueDay:Number(s.dueDay)||10,monthlyFee:Number(s.monthlyFee)||0,faceEnrolled:!!s.faceEnrolled,biometricConsentAt:s.biometricConsentAt||''}));old.attendanceSessions=old.attendanceSessions||[];old.payments=old.payments||[];old.checkins=old.checkins||[];return old}
-let state;try{state=JSON.parse(localStorage.getItem(APP_KEY)||'null')}catch{state=null}state=state?.version===3?state:migrateState(state);
+function freshState(){return{version:4,settings:{coaches:[...coachDefaults],duration:60,repeatDays:21,classes:JSON.parse(JSON.stringify(classDefaults)),kioskPin:'',faceThreshold:.62},techniques:JSON.parse(JSON.stringify(defaultTechniques)),lessons:[],cycles:[],students:JSON.parse(JSON.stringify(seededStudents)),attendanceSessions:buildSeedAttendance(),payments:[],checkins:[]}}
+function migrateState(old){if(!old||!old.settings||!old.techniques)return freshState();old.version=4;old.settings.kioskPin=old.settings.kioskPin||'';old.settings.faceThreshold=Number(old.settings.faceThreshold)||.62;old.students=(old.students||[]).map(s=>({...s,birthDate:s.birthDate||'',dueDay:Number(s.dueDay)||10,monthlyFee:Number(s.monthlyFee)||0,faceEnrolled:!!s.faceEnrolled,biometricConsentAt:s.biometricConsentAt||''}));const idMap={};for(const seeded of seededStudents){let student=old.students.find(s=>normalizeStudentName(s.name)===normalizeStudentName(seeded.name));if(!student){student=JSON.parse(JSON.stringify(seeded));old.students.push(student)}idMap[seeded.id]=student.id}old.attendanceSessions=old.attendanceSessions||[];for(const seededSession of buildSeedAttendance(idMap)){let session=old.attendanceSessions.find(s=>s.date===seededSession.date&&s.classId===seededSession.classId);if(!session){old.attendanceSessions.push(seededSession);continue}session.entries=session.entries||{};for(const[studentId,status]of Object.entries(seededSession.entries))if(!session.entries[studentId])session.entries[studentId]=status}old.payments=old.payments||[];old.checkins=old.checkins||[];return old}
+let state;try{state=JSON.parse(localStorage.getItem(APP_KEY)||'null')}catch{state=null}state=state?.version===4?state:migrateState(state);
 function saveState(){localStorage.setItem(APP_KEY,JSON.stringify(state))}
+saveState();
 function $(id){return document.getElementById(id)}function openModal(id){$(id).classList.add('show')}function closeModal(id){$(id).classList.remove('show')}
 function isoLocal(d){return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)}function fmtDate(s){if(!s)return'—';const[y,m,d]=s.split('-');return`${d}/${m}/${y}`}
 function getMonday(date){const d=new Date(date);d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+6)%7));return d}function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
