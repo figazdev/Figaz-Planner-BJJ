@@ -345,7 +345,11 @@ T('Lateral para montada','Transição','Transição'),T('Montada para costas','T
 ];
 function freshState(){return{version:5,settings:{coaches:[...coachDefaults],duration:60,repeatDays:21,classes:JSON.parse(JSON.stringify(classDefaults)),kioskPin:'',faceThreshold:.62},techniques:JSON.parse(JSON.stringify(defaultTechniques)),lessons:[],cycles:[],students:JSON.parse(JSON.stringify(seededStudents)),attendanceSessions:buildSeedAttendance(),payments:[],checkins:[]}}
 function migrateState(old){if(!old||!old.settings||!old.techniques)return freshState();old.version=5;old.settings.kioskPin=old.settings.kioskPin||'';old.settings.faceThreshold=Number(old.settings.faceThreshold)||.62;old.students=(old.students||[]).map(s=>({...s,birthDate:s.birthDate||'',dueDay:Number(s.dueDay)||10,monthlyFee:Number(s.monthlyFee)||0,faceEnrolled:!!s.faceEnrolled,biometricConsentAt:s.biometricConsentAt||''}));const idMap={};for(const seeded of seededStudents){let student=old.students.find(s=>s.classId===seeded.classId&&normalizeStudentName(s.name)===normalizeStudentName(seeded.name));if(!student){student=JSON.parse(JSON.stringify(seeded));old.students.push(student)}idMap[seeded.id]=student.id}old.attendanceSessions=old.attendanceSessions||[];for(const seededSession of buildSeedAttendance(idMap)){let session=old.attendanceSessions.find(s=>s.date===seededSession.date&&s.classId===seededSession.classId);if(!session){old.attendanceSessions.push(seededSession);continue}session.entries=session.entries||{};for(const[studentId,status]of Object.entries(seededSession.entries))if(!session.entries[studentId])session.entries[studentId]=status}old.payments=old.payments||[];old.checkins=old.checkins||[];return old}
+const CLOUD_MIGRATION_KEY='figazPlannerCloudMigratedV1';
+const hadLegacyLocalState=!!localStorage.getItem(APP_KEY);
 let state;try{state=JSON.parse(localStorage.getItem(APP_KEY)||'null')}catch{state=null}state=state?.version===5?state:migrateState(state);
+function mergeById(cloudItems=[],localItems=[]){const map=new Map(cloudItems.map(x=>[x.id,x]));localItems.forEach(x=>map.set(x.id,x));return[...map.values()]}
+function mergePlannerStates(cloudState,localState){const c=migrateState(JSON.parse(JSON.stringify(cloudState))),l=migrateState(JSON.parse(JSON.stringify(localState))),out={...c,...l};out.settings={...c.settings,...l.settings};out.techniques=mergeById(c.techniques,l.techniques);out.lessons=mergeById(c.lessons,l.lessons);out.cycles=mergeById(c.cycles,l.cycles);out.students=mergeById(c.students,l.students);out.payments=mergeById(c.payments,l.payments);out.checkins=mergeById(c.checkins,l.checkins);const sessions=new Map((c.attendanceSessions||[]).map(x=>[x.date+'|'+x.classId,x]));(l.attendanceSessions||[]).forEach(x=>{const key=x.date+'|'+x.classId,previous=sessions.get(key);sessions.set(key,previous?{...previous,...x,entries:{...(previous.entries||{}),...(x.entries||{})}}:x)});out.attendanceSessions=[...sessions.values()];return out}
 let cloudDb=null,cloudAuth=null,cloudStateRef=null,cloudReady=false,cloudApplying=false,cloudSaveTimer=null,cloudUnsubscribe=null;
 function setSyncStatus(message,type){const el=document.getElementById('syncIndicator');if(!el)return;el.textContent=message;el.className='sync-indicator show'+(type?' '+type:'')}
 function saveState(){localStorage.setItem(APP_KEY,JSON.stringify(state));if(!cloudReady||cloudApplying||!cloudAuth?.currentUser||!cloudStateRef)return;clearTimeout(cloudSaveTimer);setSyncStatus('Salvando na nuvem...','');cloudSaveTimer=setTimeout(async()=>{try{await cloudStateRef.set({state:state,updatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedBy:cloudAuth.currentUser.uid},{merge:true});setSyncStatus('Sincronizado','ok');setTimeout(()=>{const el=document.getElementById('syncIndicator');if(el)el.classList.remove('show')},1800)}catch(e){console.error(e);setSyncStatus('Falha ao sincronizar','error')}},650)}
@@ -460,9 +464,16 @@ async function startCloudSync(user){
   try{
     const snap=await cloudStateRef.get();
     if(snap.exists&&snap.data()?.state){
-      cloudApplying=true;state=migrateState(snap.data().state);localStorage.setItem(APP_KEY,JSON.stringify(state));cloudApplying=false;renderAll();
+      const cloudState=migrateState(snap.data().state);
+      if(hadLegacyLocalState&&!localStorage.getItem(CLOUD_MIGRATION_KEY)){
+        state=mergePlannerStates(cloudState,state);
+        await cloudStateRef.set({state:state,updatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedBy:user.uid,migratedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+        localStorage.setItem(CLOUD_MIGRATION_KEY,'1');
+      }else state=cloudState;
+      cloudApplying=true;localStorage.setItem(APP_KEY,JSON.stringify(state));cloudApplying=false;renderAll();
     }else{
       await cloudStateRef.set({state:state,createdAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedBy:user.uid});
+      localStorage.setItem(CLOUD_MIGRATION_KEY,'1');
     }
     cloudReady=true;setSyncStatus('Sincronizado','ok');
     cloudUnsubscribe=cloudStateRef.onSnapshot({includeMetadataChanges:false},doc=>{
